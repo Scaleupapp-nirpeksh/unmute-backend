@@ -19,6 +19,7 @@ const VentSchema = new mongoose.Schema({
   VentSchema.index({ hashtags: 1 });
   VentSchema.index({ issueType: 1 });
   VentSchema.index({ emotion: 1 });
+  VentSchema.index({ title: 'text', text: 'text' });
 
 
   module.exports = mongoose.model('Vent', VentSchema);
