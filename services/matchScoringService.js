@@ -62,7 +62,7 @@ const updateMatchesForUser = async (userId) => {
             const otherVentVector = textToVector(otherVent.text);
             const similarityScore = cosineSimilarity(ventVector, otherVentVector);
 
-            if (similarityScore >= 0.3) {
+            if (similarityScore >= 0.1) {
                 let matchUserId = otherVent.userId?.toString();
                 if (!matchUserId || userId === matchUserId) continue;
 

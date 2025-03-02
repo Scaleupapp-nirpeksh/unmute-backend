@@ -9,10 +9,21 @@ const authMiddleware = require('../middleware/authMiddleware');
 dotenv.config();
 
 const generateReadableUsername = () => {
-  const adjectives = ['Calm', 'Brave', 'Kind', 'Quiet', 'Gentle', 'Witty', 'Smart', 'Clever', 'Curious', 'Bold'];
-  const nouns = ['Panda', 'Tiger', 'Owl', 'Dolphin', 'Eagle', 'Wolf', 'Fox', 'Deer', 'Koala', 'Hawk'];
+  const adjectives = [
+    'Peaceful', 'Hopeful', 'Serene', 'Cheerful', 'Bright',
+    'Gentle', 'Joyful', 'Calm', 'Radiant', 'Lively',
+    'Tranquil', 'Mellow', 'Blissful', 'Uplifting', 'Harmonious',
+    'Zen', 'Balanced', 'Soothing', 'Rejuvenated', 'Ethereal'
+  ];
+  const nouns = [
+    'Sunrise', 'Butterfly', 'Rainbow', 'Breeze', 'Meadow',
+    'Blossom', 'Oasis', 'Harmony', 'Star', 'Wave',
+    'Garden', 'Spirit', 'Journey', 'Solace', 'Haven',
+    'Paradise', 'Aura', 'Cloud', 'Dawn', 'Serenity'
+  ];
   return `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}${Math.floor(Math.random() * 100)}`;
 };
+
 
 const requestOTP = async (req, res) => {
   const { phone } = req.body;
