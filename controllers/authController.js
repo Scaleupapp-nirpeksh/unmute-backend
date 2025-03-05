@@ -83,23 +83,39 @@ const changeUsername = async (req, res) => {
 
 
 const updateUserDetails = async (req, res) => {
-    const userId = req.user.userId;
-    const {  bio, interests, likes, dislikes, preferences } = req.body;
-  
-    const user = await User.findByIdAndUpdate(userId, {
-      
-      bio,
-      interests,
-      likes,
-      dislikes,
-      preferences
-    }, { new: true });
-  
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-  
-   // const token = jwt.sign({ userId: user._id, phone: user.phone }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    return res.status(200).json({ success: true, message: 'User details updated successfully',user });
-  };
+  const userId = req.user.userId;
+  const { bio, interests, likes, dislikes, preferences, allowComments } = req.body;
+
+  try {
+      const updateFields = {
+          bio,
+          interests,
+          likes,
+          dislikes,
+          preferences
+      };
+
+      // ✅ Only update `allowComments` if provided in the request
+      if (allowComments !== undefined) {
+          updateFields.allowComments = allowComments;
+      }
+
+      const user = await User.findByIdAndUpdate(userId, updateFields, { new: true });
+
+      if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+      return res.status(200).json({ 
+          success: true, 
+          message: 'User details updated successfully', 
+          user 
+      });
+
+  } catch (error) {
+      console.error("❌ Error updating user details:", error);
+      return res.status(500).json({ success: false, message: 'Error updating user details', error });
+  }
+};
+
 
 
   const getUserDetails = async (req, res) => {

@@ -14,6 +14,7 @@ const UserSchema = new mongoose.Schema({
     anonymousChat: { type: Boolean, default: true },
     matchPreference: { type: String, default: 'Similar Emotions' }
   },
+  allowComments: { type: Boolean, default: true }, // ✅ User-level control for allowing comments
   joinedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 

@@ -3,16 +3,21 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
 const http = require('http');  // 🔥 Import HTTP module
+const https = require('https'); 
 const { Server } = require('socket.io');  // 🔥 Import Socket.io
 const connectDB = require('./config/db');
 const Chat = require('./models/Chat');
 const Message = require('./models/Message');
+const fs = require('fs');
 
 dotenv.config();
 const app = express();
 
 // Connect to MongoDB
 connectDB();
+
+
+
 
 // Middleware
 app.use(helmet());

@@ -86,10 +86,13 @@ const getVents = async (req, res) => {
             sortQuery = { createdAt: -1 };
         }
 
+        // ✅ Include comments in response
         const vents = await Vent.find()
             .sort(sortQuery)
             .skip(skip)
-            .limit(Number(limit));
+            .limit(Number(limit))
+            .populate("userId", "username profilePic") // Fetch user details
+            .populate("comments.userId", "username profilePic") // Fetch comment user details
 
         return res.status(200).json({ success: true, vents });
 
@@ -98,6 +101,7 @@ const getVents = async (req, res) => {
         return res.status(500).json({ success: false, message: 'Error fetching vents', error });
     }
 };
+
 
 /**
  * ✅ Add reaction to a vent
@@ -185,18 +189,16 @@ const getVentFeed = async (req, res) => {
         let vents = [];
 
         if (type === 'trending') {
-            // 🔥 Get vents with most reactions in last 24 hours
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
 
             vents = await Vent.find({ createdAt: { $gte: yesterday } })
-                .sort({ "reactions.heart": -1, "reactions.hug": -1, "reactions.listen": -1 }) // Sort by highest reactions
+                .sort({ "reactions.heart": -1, "reactions.hug": -1, "reactions.listen": -1 })
                 .skip(skip)
                 .limit(Number(limit));
         } 
         
         else if (type === 'recent') {
-            // ⏳ Get the most recent vents
             vents = await Vent.find()
                 .sort({ createdAt: -1 })
                 .skip(skip)
@@ -204,7 +206,6 @@ const getVentFeed = async (req, res) => {
         } 
         
         else { // Default: Personalized Feed
-            // 🔍 Get users with past matches & common emotions
             const matchedUsers = await Match.find({ 
                 $or: [{ user1: userId }, { user2: userId }],
                 status: "accepted"
@@ -213,20 +214,39 @@ const getVentFeed = async (req, res) => {
             const matchedUserIds = matchedUsers.flatMap(match => [match.user1.toString(), match.user2.toString()])
                                                .filter(id => id !== userId);
 
-            // Fetch vents from matched users
             vents = await Vent.find({ userId: { $in: matchedUserIds } })
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(Number(limit));
         }
 
-        return res.status(200).json({ success: true, vents });
+        // ✅ Populate user and comment details
+        const populatedVents = await Vent.populate(vents, [
+            { path: "userId", select: "username profilePic" },
+            { 
+                path: "comments",
+                populate: { path: "userId", select: "username profilePic" }
+            }
+        ]);
+
+        // ✅ Filter comments based on user settings
+        const filteredVents = await Promise.all(populatedVents.map(async (vent) => {
+            const ventUser = await User.findById(vent.userId);
+            if (ventUser.preferences.allowComments) {
+                return vent;
+            } else {
+                return { ...vent.toObject(), comments: [] };
+            }
+        }));
+
+        return res.status(200).json({ success: true, vents: filteredVents });
 
     } catch (error) {
         console.error("❌ Error fetching vent feed:", error);
         return res.status(500).json({ success: false, message: 'Error fetching vent feed', error });
     }
 };
+
 
 /**
  * ✅ Report a vent
@@ -265,5 +285,81 @@ const reportVent = async (req, res) => {
 };
 
 
-module.exports = { createVent, getVents, reactToVent, deleteVent, searchVents, getVentFeed, reportVent };
+const addComment = async (req, res) => {
+    const userId = req.user.userId;
+    const { ventId, text } = req.body;
+
+    if (!ventId || !text) {
+        return res.status(400).json({ success: false, message: 'Vent ID and text are required' });
+    }
+
+    try {
+        const vent = await Vent.findById(ventId);
+        if (!vent) {
+            return res.status(404).json({ success: false, message: 'Vent not found' });
+        }
+
+        // ✅ Get the vent owner
+        const ventOwner = await User.findById(vent.userId);
+        if (!ventOwner) {
+            return res.status(404).json({ success: false, message: 'Vent owner not found' });
+        }
+
+        // ✅ Check if comments are allowed
+        if (!ventOwner.allowComments) {
+            return res.status(403).json({ success: false, message: 'This user has disabled comments on their vents' });
+        }
+
+        // ✅ Add Comment
+        const newComment = {
+            userId,
+            text,
+            createdAt: new Date()
+        };
+
+        await Vent.updateOne({ _id: ventId }, { $push: { comments: newComment } });
+
+        return res.status(201).json({ success: true, message: 'Comment added successfully' });
+
+    } catch (error) {
+        console.error("❌ Error adding comment:", error);
+        return res.status(500).json({ success: false, message: 'Error adding comment', error });
+    }
+};
+
+const deleteComment = async (req, res) => {
+    const userId = req.user.userId;
+    const { ventId, commentId } = req.params;
+
+    try {
+        const vent = await Vent.findById(ventId);
+        if (!vent) {
+            return res.status(404).json({ success: false, message: 'Vent not found' });
+        }
+
+        // ✅ Only allow comment deletion if:
+        // - The comment belongs to the user OR
+        // - The vent belongs to the user
+        const comment = vent.comments.find(c => c._id.toString() === commentId);
+        if (!comment) {
+            return res.status(404).json({ success: false, message: 'Comment not found' });
+        }
+
+        if (comment.userId.toString() !== userId && vent.userId.toString() !== userId) {
+            return res.status(403).json({ success: false, message: 'Unauthorized to delete this comment' });
+        }
+
+        // ✅ Remove comment
+        await Vent.updateOne({ _id: ventId }, { $pull: { comments: { _id: commentId } } });
+
+        return res.status(200).json({ success: true, message: 'Comment deleted successfully' });
+
+    } catch (error) {
+        console.error("❌ Error deleting comment:", error);
+        return res.status(500).json({ success: false, message: 'Error deleting comment', error });
+    }
+};
+
+
+module.exports = { createVent, getVents, reactToVent, deleteVent, searchVents, getVentFeed, reportVent, addComment, deleteComment };
 

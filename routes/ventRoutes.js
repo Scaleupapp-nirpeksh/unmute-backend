@@ -1,5 +1,5 @@
 const express = require('express');
-const { createVent, getVents, reactToVent, deleteVent, searchVents,getVentFeed , reportVent} = require('../controllers/ventController');
+const { createVent, getVents, reactToVent, deleteVent, searchVents,getVentFeed , reportVent, addComment, deleteComment} = require('../controllers/ventController');
 const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -20,6 +20,8 @@ router.delete('/:ventId', authMiddleware, deleteVent);
 router.get('/search', searchVents);
 router.get('/feed', authMiddleware, getVentFeed);
 router.post('/report', authMiddleware, reportVent);
+router.post('/comment', authMiddleware, addComment);
+router.delete('/comment/:ventId/:commentId', authMiddleware, deleteComment);
 
 
 
