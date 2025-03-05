@@ -91,7 +91,7 @@ const getVents = async (req, res) => {
             .sort(sortQuery)
             .skip(skip)
             .limit(Number(limit))
-            .populate("userId", "username profilePic") // Fetch user details
+            .populate("userId", "username profilePic allowComments") // Fetch user details
             .populate("comments.userId", "username profilePic") // Fetch comment user details
 
         return res.status(200).json({ success: true, vents });
@@ -184,68 +184,64 @@ const getVentFeed = async (req, res) => {
     const userId = req.user.userId;
     const { type = 'personalized', page = 1, limit = 10 } = req.query;
     const skip = (page - 1) * limit;
-
+  
     try {
-        let vents = [];
-
-        if (type === 'trending') {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-
-            vents = await Vent.find({ createdAt: { $gte: yesterday } })
-                .sort({ "reactions.heart": -1, "reactions.hug": -1, "reactions.listen": -1 })
-                .skip(skip)
-                .limit(Number(limit));
-        } 
-        
-        else if (type === 'recent') {
-            vents = await Vent.find()
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(Number(limit));
-        } 
-        
-        else { // Default: Personalized Feed
-            const matchedUsers = await Match.find({ 
-                $or: [{ user1: userId }, { user2: userId }],
-                status: "accepted"
-            });
-
-            const matchedUserIds = matchedUsers.flatMap(match => [match.user1.toString(), match.user2.toString()])
-                                               .filter(id => id !== userId);
-
-            vents = await Vent.find({ userId: { $in: matchedUserIds } })
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(Number(limit));
+      let vents = [];
+  
+      if (type === 'trending') {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+  
+        vents = await Vent.find({ createdAt: { $gte: yesterday } })
+          .sort({ "reactions.heart": -1, "reactions.hug": -1, "reactions.listen": -1 })
+          .skip(skip)
+          .limit(Number(limit));
+      } else if (type === 'recent') {
+        vents = await Vent.find()
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(Number(limit));
+      } else { // Default: Personalized Feed
+        const matchedUsers = await Match.find({ 
+          $or: [{ user1: userId }, { user2: userId }],
+          status: "accepted"
+        });
+  
+        const matchedUserIds = matchedUsers.flatMap(match => [match.user1.toString(), match.user2.toString()])
+                                           .filter(id => id !== userId);
+  
+        vents = await Vent.find({ userId: { $in: matchedUserIds } })
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(Number(limit));
+      }
+  
+      // Populate user and comment details
+      // IMPORTANT: Include the allowComments field when populating the vent owner (userId)
+      const populatedVents = await Vent.populate(vents, [
+        { path: "userId", select: "username profilePic allowComments" },
+        { 
+          path: "comments",
+          populate: { path: "userId", select: "username profilePic" }
         }
-
-        // ✅ Populate user and comment details
-        const populatedVents = await Vent.populate(vents, [
-            { path: "userId", select: "username profilePic" },
-            { 
-                path: "comments",
-                populate: { path: "userId", select: "username profilePic" }
-            }
-        ]);
-
-        // ✅ Filter comments based on user settings
-        const filteredVents = await Promise.all(populatedVents.map(async (vent) => {
-            const ventUser = await User.findById(vent.userId);
-            if (ventUser.preferences.allowComments) {
-                return vent;
-            } else {
-                return { ...vent.toObject(), comments: [] };
-            }
-        }));
-
-        return res.status(200).json({ success: true, vents: filteredVents });
-
+      ]);
+  
+      // Filter comments based on whether the vent owner's allowComments flag is true.
+      const filteredVents = populatedVents.map((vent) => {
+        if (vent.userId.allowComments) {
+          return vent;
+        } else {
+          return { ...vent.toObject(), comments: [] };
+        }
+      });
+  
+      return res.status(200).json({ success: true, vents: filteredVents });
     } catch (error) {
-        console.error("❌ Error fetching vent feed:", error);
-        return res.status(500).json({ success: false, message: 'Error fetching vent feed', error });
+      console.error("❌ Error fetching vent feed:", error);
+      return res.status(500).json({ success: false, message: 'Error fetching vent feed', error });
     }
-};
+  };
+  
 
 
 /**
