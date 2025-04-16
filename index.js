@@ -2,9 +2,9 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
-const http = require('http');  // 🔥 Import HTTP module
+const http = require('http');
 const https = require('https'); 
-const { Server } = require('socket.io');  // 🔥 Import Socket.io
+const { Server } = require('socket.io');
 const connectDB = require('./config/db');
 const Chat = require('./models/Chat');
 const Message = require('./models/Message');
@@ -16,16 +16,14 @@ const app = express();
 // Connect to MongoDB
 connectDB();
 
-
-
-
 // Middleware
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // Increased limit for journal entries with rich content
 
-// ✅ Load Background Match Job
+// ✅ Load Background Services
 require('./services/matchScheduler');  // Runs Match Updating Daily
+require('./services/journalScheduler'); // New! Runs Journal Analysis and Reminders
 
 // Create HTTP Server and Attach Socket.io
 const server = http.createServer(app);
@@ -121,6 +119,12 @@ io.on('connection', (socket) => {
             console.error("❌ Error deleting message in real-time:", error);
         }
     });
+    
+    // 🆕 Journal Entry Notification
+    socket.on('journalEntryCreated', ({ userId }) => {
+        // Notify user's matches about new journal entry (if public)
+        // This would be implemented based on your visibility rules
+    });
 
     // 🔹 Handle user disconnection properly
     socket.on('disconnect', () => {
@@ -145,8 +149,17 @@ io.on('connection', (socket) => {
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/vent', require('./routes/ventRoutes'));
 app.use('/api/match', require('./routes/matchRoutes'));
-app.use('/api/chat', require('./routes/chatRoutes'));
+// First import the function
+const chatRoutes = require('./routes/chatRoutes');
+// Then call it with io and use the returned router
+app.use('/api/chat', chatRoutes(io));
 app.use('/api/admin', require('./routes/adminRoutes'));
+console.log('>>> journalRoutes path:', require.resolve('./routes/journalRoutes'));
+const importedJournalRoutes = require('./routes/journalRoutes');
+console.log('>>> importedJournalRoutes:', importedJournalRoutes);
+
+
+app.use('/api/journal', importedJournalRoutes);
 
 app.get('/', (req, res) => {
     res.send('🚀 Unmute Backend is Running!');

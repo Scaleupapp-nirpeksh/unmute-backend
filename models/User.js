@@ -12,9 +12,30 @@ const UserSchema = new mongoose.Schema({
   dislikes: { type: [String], default: [] },
   preferences: {
     anonymousChat: { type: Boolean, default: true },
-    matchPreference: { type: String, default: 'Similar Emotions' }
+    matchPreference: { type: String, default: 'Similar Emotions' },
+    // 🆕 New journaling preferences
+    journalReminders: { type: Boolean, default: true },
+    journalReminderTime: { type: String, default: '20:00' }, // 24-hour format
+    autoAnalyzeJournals: { type: Boolean, default: true },
+    journalPrivacyDefault: { type: String, default: 'private', enum: ['private', 'matches', 'public'] }
   },
-  allowComments: { type: Boolean, default: true }, // ✅ User-level control for allowing comments
+  allowComments: { type: Boolean, default: true }, // User-level control for allowing comments
+  // 🆕 Journal feature related fields
+  journalStats: {
+    totalEntries: { type: Number, default: 0 },
+    lastEntryDate: { type: Date },
+    favoriteCategories: [{ type: String }],
+    topEmotions: [{
+      emotion: String,
+      count: Number
+    }]
+  },
+  notifications: {
+    journalReminders: { type: Boolean, default: true },
+    streakAlerts: { type: Boolean, default: true },
+    insights: { type: Boolean, default: true },
+    matchSuggestions: { type: Boolean, default: true }
+  },
   joinedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 
