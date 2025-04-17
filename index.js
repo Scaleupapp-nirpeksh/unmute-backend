@@ -9,6 +9,7 @@ const connectDB = require('./config/db');
 const Chat = require('./models/Chat');
 const Message = require('./models/Message');
 const fs = require('fs');
+const configureCircleSocket = require('./services/circleSocketService');
 
 dotenv.config();
 const app = express();
@@ -19,11 +20,11 @@ connectDB();
 // Middleware
 app.use(helmet());
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // Increased limit for journal entries with rich content
+app.use(express.json({ limit: '50mb' })); // Increased limit for rich content
 
 // ✅ Load Background Services
 require('./services/matchScheduler');  // Runs Match Updating Daily
-require('./services/journalScheduler'); // New! Runs Journal Analysis and Reminders
+require('./services/journalScheduler'); // Runs Journal Analysis and Reminders
 
 // Create HTTP Server and Attach Socket.io
 const server = http.createServer(app);
@@ -125,6 +126,24 @@ io.on('connection', (socket) => {
         // Notify user's matches about new journal entry (if public)
         // This would be implemented based on your visibility rules
     });
+    
+    // 🆕 Real-time notifications
+    socket.on('subscribeToNotifications', (userId) => {
+        // Add user to a personal notification room
+        socket.join(`user:${userId}:notifications`);
+        console.log(`👂 User ${userId} subscribed to notifications`);
+    });
+    
+    // 🆕 Q&A Forum activity
+    socket.on('joinQuestionRoom', (questionId) => {
+        socket.join(`question:${questionId}`);
+        console.log(`👋 User joined question room: ${questionId}`);
+    });
+    
+    socket.on('leaveQuestionRoom', (questionId) => {
+        socket.leave(`question:${questionId}`);
+        console.log(`👋 User left question room: ${questionId}`);
+    });
 
     // 🔹 Handle user disconnection properly
     socket.on('disconnect', () => {
@@ -145,25 +164,90 @@ io.on('connection', (socket) => {
     });
 });
 
-// Load Routes
-app.use('/api/auth', require('./routes/authRoutes'));
-app.use('/api/vent', require('./routes/ventRoutes'));
-app.use('/api/match', require('./routes/matchRoutes'));
-// First import the function
+// Set up circle socket namespace
+const circleIO = configureCircleSocket(io, onlineUsers);
+
+// Import route handlers
+const authRoutes = require('./routes/authRoutes');
+const ventRoutes = require('./routes/ventRoutes');
+const matchRoutes = require('./routes/matchRoutes');
 const chatRoutes = require('./routes/chatRoutes');
-// Then call it with io and use the returned router
-app.use('/api/chat', chatRoutes(io));
-app.use('/api/admin', require('./routes/adminRoutes'));
-console.log('>>> journalRoutes path:', require.resolve('./routes/journalRoutes'));
-const importedJournalRoutes = require('./routes/journalRoutes');
-console.log('>>> importedJournalRoutes:', importedJournalRoutes);
+const adminRoutes = require('./routes/adminRoutes');
+const journalRoutes = require('./routes/journalRoutes');
+const circleRoutes = require('./routes/circleRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const notificationSettingsRoutes = require('./routes/notificationSettingsRoutes');
+const qaRoutes = require('./routes/qaRoutes'); // New! Q&A Forum routes
 
+// Register routes
+app.use('/api/auth', authRoutes);
+app.use('/api/vent', ventRoutes);
+app.use('/api/match', matchRoutes);
+app.use('/api/chat', chatRoutes(io)); // Pass io to chat routes
+app.use('/api/admin', adminRoutes);
+app.use('/api/journal', journalRoutes);
+app.use('/api/circles', circleRoutes);
+//app.use('/api/notifications', notificationRoutes);
+app.use('/api/notification-settings', notificationSettingsRoutes);
+app.use('/api/qa', qaRoutes); // New! Q&A Forum routes
 
-app.use('/api/journal', importedJournalRoutes);
-
+// Home route
 app.get('/', (req, res) => {
     res.send('🚀 Unmute Backend is Running!');
 });
 
+// Set up notification socket events
+// This allows sending real-time notifications to users
+io.on('connection', (socket) => {
+    socket.on('join', (userId) => {
+        // Send any pending notifications
+        // This could trigger a notification check when user connects
+    });
+});
+
+// Set up Q&A socket events for real-time updates
+io.on('connection', (socket) => {
+    // When a new answer is posted
+    socket.on('newAnswer', ({ questionId, answer }) => {
+        // Broadcast to everyone viewing the question
+        socket.to(`question:${questionId}`).emit('answerAdded', { questionId, answer });
+    });
+    
+    // When an answer is voted on
+    socket.on('answerVoted', ({ questionId, answerId, voteCount }) => {
+        // Broadcast vote update
+        socket.to(`question:${questionId}`).emit('voteUpdated', { 
+            questionId, 
+            answerId, 
+            voteCount 
+        });
+    });
+    
+    // When an answer is accepted
+    socket.on('answerAccepted', ({ questionId, answerId }) => {
+        // Broadcast acceptance
+        socket.to(`question:${questionId}`).emit('solutionMarked', { 
+            questionId, 
+            answerId 
+        });
+    });
+});
+
+// Function to emit a notification to a specific user
+global.emitNotification = (userId, notification) => {
+    io.to(`user:${userId}:notifications`).emit('newNotification', notification);
+};
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Unhandled Error:', err);
+    res.status(500).json({ 
+        success: false, 
+        message: 'An unexpected error occurred',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+});
+
+// Start the server
 const PORT = process.env.PORT || 5002;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

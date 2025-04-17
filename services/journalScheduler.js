@@ -1,3 +1,5 @@
+//services/journalScheduler.js
+
 const cron = require('node-cron');
 const { batchAnalyzeJournalEntries } = require('./journalAnalysisService');
 const { JournalStreak, JournalEntry } = require('../models/Journal');
